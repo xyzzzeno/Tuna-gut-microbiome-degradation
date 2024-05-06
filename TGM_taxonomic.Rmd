@@ -1,0 +1,246 @@
+---
+title: "TGM taxonomic analysis"
+output: html_notebook
+---
+
+# Packages 
+```{r}
+library(ape)
+library(Biostrings)
+library(biomformat)
+library(phyloseq)
+library(Hmisc)
+library(yaml)
+library(tidyr)
+library(dplyr)
+library(stats)
+library(utils)
+library(ggplot2)
+library(microbiome)
+library(BiocManager)
+library(DESeq2)
+library(ggpubr)
+library(ggsci)
+library(reshape2)
+library(vegan)
+library(ANCOMBC)
+library(limma)
+library(tidyverse)
+library(DECIPHER)
+library(dendextend)
+library(ggtext)
+library(ggordiplots)
+library(tibble)
+library(biomeUtils)
+library(rstatix)
+library(emmeans)
+library(multcomp)
+library(MicrobiomeStat)
+library(microbiomeMarker)
+```
+
+*files used in this R script are generated from TGM_statistical*
+
+# Experiment 1
+
+```{r}
+exp1_melt <- psmelt(exp1_clean)
+```
+
+sample manipulation
+```{r}
+exp1_at1 = transform_sample_counts(exp1_clean, function(x) 1E6 * x/sum(x))
+exp1_at1 <- aggregate_rare(exp1_at1, level = "Family", detection = 1/100, prevalence = 50/100)
+```
+
+```{r}
+exp1.family.sum = tapply(taxa_sums(exp1_at1), tax_table(exp1_at1)[, "Family"], sum, na.rm=TRUE)
+exp1.top10family = names(sort(exp1.family.sum, TRUE))[1:10]
+exp1_at1 = prune_taxa((tax_table(exp1_at1)[, "Family"] %in% exp1.top10family), exp1_at1)
+exp1.top10family.ra <- exp1_at1 %>% aggregate_taxa(level = "Family") %>% microbiome::transform(transform = "compositional")
+exp1.top10family.ra %>%  plot_composition(average_by = "time")+ scale_y_continuous()+theme_bw()+
+  scale_fill_brewer("Family", palette = "Paired") +labs(x="Time", y="Relative abundance")
+```
+
+## individual variances
+```{r}
+exp1_top10_melt <- psmelt(exp1.top10family.ra)
+exp1_top10_fish_group <- exp1_top10_melt %>% group_by(OTU,time,fish.number) %>% summarise(avg_ab=mean(Abundance))
+```
+
+```{r}
+exp1_individual <- ggplot(exp1_top10_fish_group, aes(fill=OTU,y=avg_ab, x=time)) + 
+    geom_bar(position="fill", stat="identity") + facet_wrap(~fish.number, scales = "free_x") + theme_bw() + ylab("Relative abundance")+ xlab("Time")+
+  scale_fill_brewer("Family",palette = "Paired")
+exp2_individual
+```
+
+## Simper test
+```{r}
+exp1_family_ps <- tax_glom(exp1_at1, "Family")
+exp1_family_otu <- as.data.frame(t(otu_table(exp1_family_ps)))
+colnames(exp1_family_otu) <- as.data.frame(tax_table(exp1_family_ps))$Family
+```
+
+```{r}
+exp1_at1_meta <- meta(exp1_at1)
+exp1_simper <- with(exp1_at1_meta, simper(exp1_family_otu, time, permutations = 99))
+summary(exp1_simper)
+
+comparisons <- c("0h_2h", "0h_24h", "0h_288h", "0h_576h")
+simper.results1 <- c()
+
+for(i in 1:length(comparisons)) {
+temp <- summary(exp1_simper)[as.character(comparisons[i])] %>%
+as.data.frame()
+colnames(temp) <- gsub(
+paste(comparisons[i],".", sep = ""), "", colnames(temp))
+temp <- temp %>%
+mutate(Comparison = comparisons[i],
+Position = row_number()) %>%
+  rownames_to_column(var = "Species")
+simper.results1 <- rbind(simper.results1, temp)
+}
+simper.results1
+```
+
+```{r}
+exp1_important <- simper.results1 %>% filter(Xp <= 0.05) %>%select(Species, Xaverage, Xp, Comparison, Position) %>% arrange(Xaverage)
+```
+
+## Explore Vibrionaceae
+```{r}
+exp1_top10_melt <- psmelt(exp1.top10family.ra)
+exp1_top10_melt$timeN <- exp1_top10_melt$time
+exp1_top10_melt$timeN<-gsub( "h", "", as.character(exp1_top10_melt$timeN))
+```
+
+```{r}
+exp1_vi <- exp1_top10_melt %>% filter(OTU == "Vibrionaceae")
+summary(glm(Abundance ~ as.numeric(timeN), data = exp1_vi))
+```
+
+```{r}
+exp1_vi_change <- ggplot(exp1_vi, aes(x=time, y=Abundance)) +
+    geom_point() +geom_smooth(aes(group = 1),method=lm, color = "#6A3D9A", fill = "#6F1F9F", alpha= 0.2) + theme_bw() +labs(title = "Vibrionaceae", x="Time", y= "Relative abundance") + theme(plot.title = element_textbox_simple(
+      linetype = 1, size = 14,
+      fill = "#ebd7f4", 
+      halign = 0.5, padding = margin(5, 5, 5, 5), 
+      margin = margin(0, 0, 10, 0) 
+    ))
+print(exp1_vi_change)
+```
+
+## Explore Bradyrhizobiaceae
+```{r}
+exp1_b <- exp1_top10_melt %>% filter(OTU == "Bradyrhizobiaceae")
+summary(glm(Abundance ~ as.numeric(timeN), data = exp1_b))
+```
+
+```{r}
+exp1_b_change <- ggplot(exp1_b, aes(x=time, y=Abundance)) +
+    geom_point() +geom_smooth(aes(group = 1),method=lm, color = "#96c3dc", fill = "#7fa9c0", alpha= 0.2) + theme_bw() +labs(title = "Bradyrhizobiaceae", x="Time", y= "Relative abundance") + theme(plot.title = element_textbox_simple(
+      linetype = 1, size = 14,
+      fill = "#b1d5e9", 
+      halign = 0.5, padding = margin(5, 5, 5, 5), 
+      margin = margin(0, 0, 10, 0) 
+    ))
+print(exp1_b_change)
+```
+
+
+# Experiment 2
+```{r}
+exp2_melt <- psmelt(exp2_clean)
+```
+
+sample manipulation
+```{r}
+exp2_at1 = transform_sample_counts(exp2_clean, function(x) 1E6 * x/sum(x))
+exp2_at1 <- aggregate_rare(exp2_at1, level = "Family", detection = 1/100, prevalence = 50/100)
+```
+
+```{r}
+exp2.family.sum = tapply(taxa_sums(exp2_at1), tax_table(exp2_at1)[, "Family"], sum, na.rm=TRUE)
+exp2.top10family = names(sort(exp2.family.sum, TRUE))[1:10]
+exp2_at1 = prune_taxa((tax_table(exp2_at1)[, "Family"] %in% exp2.top10family), exp2_at1)
+exp2.top10family.ra <- exp2_at1 %>% aggregate_taxa(level = "Family") %>% microbiome::transform(transform = "compositional")
+p_exp2.top10family.ra <- exp2.top10family.ra %>%  plot_composition(average_by = "time")+ scale_y_continuous()+theme_bw()+
+  scale_fill_brewer("Family", palette = "Paired") +labs(x="Time", y="Relative abundance")
+p_exp2.top10family.ra
+```
+
+## Simper test
+```{r}
+exp2_family_ps <- tax_glom(exp2_at1, "Family")
+exp2_family_otu <- as.data.frame(t(otu_table(exp2_family_ps)))
+colnames(exp2_family_otu) <- as.data.frame(tax_table(exp2_family_ps))$Family
+```
+
+```{r}
+exp2_at1_meta <- meta(exp2_at1)
+exp2_simper <- with(exp2_at1_meta, simper(exp2_family_otu, time, permutations = 99))
+summary(exp2_simper)
+
+comparisons <- c("0h_2h", "0h_24h", "0h_288h", "0h_576h")
+simper.results2 <- c()
+
+for(i in 1:length(comparisons)) {
+temp <- summary(exp2_simper)[as.character(comparisons[i])] %>%
+as.data.frame()
+colnames(temp) <- gsub(
+paste(comparisons[i],".", sep = ""), "", colnames(temp))
+temp <- temp %>%
+mutate(Comparison = comparisons[i],
+Position = row_number()) %>%
+  rownames_to_column(var = "Species")
+simper.results2 <- rbind(simper.results2, temp)
+}
+simper.results2
+```
+
+```{r}
+exp2_important <- simper.results2 %>% filter(Xp <= 0.05) %>%select(Species, Xaverage, Xp, Comparison, Position) %>% arrange(Xaverage)
+```
+
+## Explore Vibrionaceae
+```{r}
+exp2_top10_melt <- psmelt(exp2.top10family.ra)
+exp2_top10_melt$timeN <- exp2_top10_melt$time
+exp2_top10_melt$timeN<-gsub( "h", "", as.character(exp2_top10_melt$timeN))
+```
+
+```{r}
+exp2_vi <- exp2_top10_melt %>% filter(OTU == "Vibrionaceae")
+summary(glm(Abundance ~ as.numeric(timeN), data = exp2_vi))
+```
+
+```{r}
+exp2_vi_change <- ggplot(exp2_vi, aes(x=time, y=Abundance)) +
+    geom_point() +geom_smooth(aes(group = 1),method=lm, color = "#6A3D9A", fill = "#6F1F9F", alpha= 0.2) + theme_bw() +labs(title = "Vibrionaceae", x="Time", y= "Relative abundance") + theme(plot.title = element_textbox_simple(
+      linetype = 1, size = 14,
+      fill = "#ebd7f4", 
+      halign = 0.5, padding = margin(5, 5, 5, 5), 
+      margin = margin(0, 0, 10, 0) 
+    ))
+print(exp2_vi_change)
+```
+
+## Explore Bradyrhizobiaceae
+```{r}
+exp2_b <- exp2_top10_melt %>% filter(OTU == "Bradyrhizobiaceae")
+summary(glm(Abundance ~ as.numeric(timeN), data = exp2_b))
+```
+
+```{r}
+exp2_b_change <- ggplot(exp2_b, aes(x=time, y=Abundance)) +
+    geom_point() +geom_smooth(aes(group = 1),method=lm, color = "#96c3dc", fill = "#7fa9c0", alpha= 0.2) + theme_bw() +labs(title = "Bradyrhizobiaceae", x="Time", y= "Relative abundance") + theme(plot.title = element_textbox_simple(
+      linetype = 1, size = 14,
+      fill = "#b1d5e9", 
+      halign = 0.5, padding = margin(5, 5, 5, 5), 
+      margin = margin(0, 0, 10, 0) 
+    ))
+print(exp2_b_change)
+```
+
+
