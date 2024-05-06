@@ -1,0 +1,348 @@
+---
+title: "Tuna gut microbiome degradation analyses"
+output: html_notebook
+---
+
+# Packages 
+```{r}
+library(qiime2R)
+library(ape)
+library(Biostrings)
+library(biomformat)
+library(phyloseq)
+library(Hmisc)
+library(yaml)
+library(tidyr)
+library(dplyr)
+library(stats)
+library(utils)
+library(ggplot2)
+library(microbiome)
+library(BiocManager)
+library(DESeq2)
+library(ggpubr)
+library(ggsci)
+library(reshape2)
+library(vegan)
+library(ANCOMBC)
+library(limma)
+library(tidyverse)
+library(DECIPHER)
+library(dendextend)
+library(ggtext)
+library(ggordiplots)
+library(tibble)
+library(biomeUtils)
+library(rstatix)
+library(emmeans)
+library(multcomp)
+library(MicrobiomeStat)
+library(microbiomeMarker)
+```
+
+# input data from qiime2
+### Experiment1
+```{r}
+exp1_table <- read_qza("exp1-table.qza")
+exp1_metadata<-read_q2metadata("exp1-metadata.tsv")
+taxonomy<-read_qza("taxonomy.qza")
+```
+
+create phyloseq object
+```{r}
+exp1_physeq <- qza_to_phyloseq(
+    features="exp1-table.qza",
+    tree="rooted-tree.qza",
+    "taxonomy.qza",
+    metadata = "exp1-metadata.tsv"
+    )
+exp1_physeq
+```
+
+```{r}
+summarize_phyloseq(exp1_physeq)
+```
+
+
+### Experiment2
+```{r}
+exp2_table <- read_qza("exp2-table.qza")
+exp2_metadata<-read_q2metadata("exp2-metadata.tsv")
+taxonomy<-read_qza("taxonomy.qza")
+```
+
+create phyloseq object
+```{r}
+exp2_physeq <- qza_to_phyloseq(
+    features="exp2-table.qza",
+    tree="rooted-tree.qza",
+    "taxonomy.qza",
+    metadata = "exp2-metadata.tsv"
+    )
+exp2_physeq
+```
+
+```{r}
+summarize_phyloseq(exp2_physeq)
+```
+
+
+# Data cleaning
+### diversity check
+```{r}
+summary(sample_sums(exp1_physeq))
+```
+
+```{r}
+vegan::rarecurve(t(abundances(exp1_physeq)), 
+                      step = 50, label = FALSE, 
+                      sample = min(rowSums(t(abundances(exp1_physeq))), 
+                                   col = "blue", cex = 0.6))
+```
+
+```{r}
+summary(sample_sums(exp2_physeq))
+```
+
+```{r}
+vegan::rarecurve(t(abundances(exp2_physeq)), 
+                      step = 50, label = FALSE, 
+                      sample = min(rowSums(t(abundances(exp2_physeq))), 
+                                   col = "blue", cex = 0.6))
+```
+
+### taxonomic information cleaning
+Experiment1
+```{r}
+table(tax_table(exp1_rar)[, "Phylum"], exclude = NULL)
+```
+
+```{r}
+exp1_clean <- subset_taxa(exp1_physeq, !is.na(Phylum) & !Phylum %in% c(""))
+table(tax_table(exp1_clean)[, "Phylum"], exclude = NULL)
+```
+
+```{r}
+table(tax_table(exp1_clean)[, "Family"], exclude = NULL)
+```
+
+```{r}
+exp1_clean <- subset_taxa(exp1_clean, (Family != "mitochondria") | is.na(Family))
+table(tax_table(exp1_clean)[, "Family"], exclude = NULL)
+```
+
+```{r}
+print(exp1_clean)
+```
+
+Experiment2
+```{r}
+table(tax_table(exp2_rar)[, "Phylum"], exclude = NULL)
+```
+
+```{r}
+exp2_clean <- subset_taxa(exp2_physeq, !is.na(Phylum) & !Phylum %in% c(""))
+table(tax_table(exp2_clean)[, "Phylum"], exclude = NULL)
+```
+
+```{r}
+table(tax_table(exp2_clean)[, "Family"], exclude = NULL)
+```
+
+```{r}
+exp2_clean <- subset_taxa(exp2_clean, (Family != "mitochondria") | is.na(Family))
+table(tax_table(exp2_clean)[, "Family"], exclude = NULL)
+```
+
+```{r}
+print(exp2_clean)
+```
+
+# Metadata cleaning
+```{r}
+exp1_clean@sam_data$time <- factor(exp1_clean@sam_data$time, levels = c("0h","2h","24h","288h","576h"))
+exp1_clean@sam_data$`fish-number` <- factor(exp1_clean@sam_data$`fish-number`,levels = c("1","2","3","4","5","6","7","8","9","10"))
+```
+
+```{r}
+exp2_clean@sam_data$time <- factor(exp2_clean@sam_data$time, levels = c("0h","2h","24h","288h","576h"))
+```
+
+# ALpha diversity analysis - Experiment 1
+```{r}
+d1_clean <- meta(exp1_clean)
+d1_clean$diversity_chao <- microbiome::richness(exp1_clean, "chao1")$chao1
+d1_clean$eveness_sim <- microbiome::evenness(exp1_clean, "simpson")$simpson
+d1_clean$low_abundance <- microbiome::rarity(exp1_clean, "low_abundance")$low_abundance
+d1_clean$high_abundance <- microbiome::dominance(exp1_clean, "core_abundance")$core_abundance
+```
+
+
+```{r}
+shapiro.test(resid(aov(diversity_chao ~ time, data = d1_clean)))
+```
+
+```{r}
+summary(aov(diversity_chao~time+fish.number, data=d1_clean))
+```
+
+```{r}
+TukeyHSD(aov(diversity_chao~time+fish.number, data=d1_clean), "time")
+```
+
+
+```{r}
+shapiro.test(resid(aov(eveness_sim ~ time+fish.number, data = d1_clean))) 
+```
+
+```{r}
+summary(aov(eveness_sim~time+fish.number, data=d1_clean))
+```
+
+```{r}
+shapiro.test(resid(aov(low_abundance ~ time+fish.number, data = d1_clean))) 
+```
+
+```{r}
+summary(aov(low_abundance~time+fish.number, data=d1_clean))
+```
+
+```{r}
+TukeyHSD(aov(low_abundance~time+fish.number, data=d1_clean), "time")
+```
+
+```{r}
+shapiro.test(resid(aov(high_abundance ~ time+fish.number, data = d1_clean))) 
+```
+
+```{r}
+summary(aov(high_abundance~time+fish.number, data=d1_clean))
+```
+
+```{r}
+TukeyHSD(aov(high_abundance~time+fish.number, data=d1_clean), "time")
+```
+
+# Alpha diversity analysis - Experiment 2
+```{r}
+d2_clean <- meta(exp2_clean)
+d2_clean$diversity_chao <- microbiome::richness(exp2_clean, "chao1")$chao1
+d2_clean$eveness_sim <- microbiome::evenness(exp2_clean, "simpson")$simpson
+d2_clean$low_abundance <- microbiome::rarity(exp2_clean, "low_abundance")$low_abundance
+d2_clean$high_abundance <- microbiome::dominance(exp2_clean, "core_abundance")$core_abundance
+```
+
+```{r}
+shapiro.test(resid(aov(diversity_chao ~ time, data = d2_clean)))
+```
+
+```{r}
+kruskal.test(d2_clean$diversity_chao, d2_clean$time)
+```
+
+```{r}
+pairwise.wilcox.test(d2_clean$diversity_chao, d2_clean$time,p.adjust.method="holm")
+```
+
+```{r}
+shapiro.test(resid(aov(eveness_sim ~ time+fish.number, data = d2_clean))) 
+```
+
+```{r}
+kruskal.test(d2_clean$eveness_sim, d2_clean$time)
+```
+
+```{r}
+pairwise.wilcox.test(d2_clean$eveness_sim, d2_clean$time,p.adjust.method="holm")
+```
+
+```{r}
+shapiro.test(resid(aov(low_abundance ~ time+fish.number, data = d2_clean))) 
+```
+
+```{r}
+kruskal.test(d2_clean$low_abundance, d2_clean$time)
+```
+
+```{r}
+pairwise.wilcox.test(d2_clean$low_abundance, d2_clean$time,p.adjust.method="holm")
+```
+
+```{r}
+shapiro.test(resid(aov(high_abundance ~ time+fish.number, data = d2_clean))) 
+```
+
+```{r}
+kruskal.test(d2_clean$high_abundance, d2_clean$time)
+```
+
+
+# Beta diversity analysis - Experiment 1
+###TSS normalization
+```{r}
+exp1_norm <- normalize(exp1_clean, "TSS")
+```
+
+###PCoA
+PCOA
+```{r}
+set.seed(119)
+exp1_ord <- ordinate(exp1_norm, "PCoA", "bray")
+plot_ordination(exp1_norm, exp1_ord, color = "fish.number", shape = "time") +
+                geom_point(size = 5) +scale_color_jco() +scale_shape_manual(values = c(4,16,15,17,18)) +labs(shape="Time", colour="Fish ID")+theme_bw()
+```
+
+```{r}
+exp1_norm_otu <- abundances(exp1_norm)
+exp1_norm_meta <- data.frame(sample_data(exp1_norm))
+unifrac.dist.exp1 <- UniFrac(exp1_norm, 
+                        weighted = TRUE, 
+                        normalized = TRUE,  
+                        parallel = FALSE, 
+                        fast = TRUE)
+
+adonis2(unifrac.dist.exp1 ~ time, data = exp1_norm_meta)
+```
+
+```{r}
+exp1_disper <- betadisper(unifrac.dist.exp1, exp1_norm_meta$time)
+permutest(exp1_disper, pairwise = TRUE)
+```
+
+
+# Beta diversity analysis - Experiment 2
+###TSS normalization
+```{r}
+exp2_norm <- normalize(exp2_clean, "TSS")
+```
+
+###PCoA
+PCOA
+```{r}
+set.seed(119)
+exp2_ord <- ordinate(exp2_norm, "PCoA", "bray")
+plot_ordination(exp2_norm, exp2_ord, color = "time") +
+                geom_point(size = 5) +scale_color_jco() + labs(color="Time")+theme_bw()
+```
+
+```{r}
+exp2_norm_otu <- abundances(exp2_norm)
+exp2_norm_meta <- data.frame(sample_data(exp2_norm))
+unifrac.dist.exp2 <- UniFrac(exp2_norm, 
+                        weighted = TRUE, 
+                        normalized = TRUE,  
+                        parallel = FALSE, 
+                        fast = TRUE)
+
+adonis2(unifrac.dist.exp2 ~ time, data = exp2_norm_meta)
+```
+
+```{r}
+exp2_disper <- betadisper(unifrac.dist.exp2, exp1_norm_meta$time)
+permutest(exp2_disper, pairwise = TRUE)
+```
+
+
+
+
+
