@@ -13,3 +13,10 @@ The bioinformatics analysis was then carried out in QIIME2 (version 2021.4.0). B
 Taxonomic information was assigned to each ASV against a curated SILVA (138) reference database with only 16S rRNA V3-V4 region sequences. 
 
 Data cleaning, statistical analyses, and visualization were performed using R (version 4.1.2) within RStudio (version 2022.2.0.443). Data cleaning was conducted using phyloseq package (version 1.38.0) and microbiome package (version 1.23.1). Then diversity analyses, stastical anslyses, and significance test were using the microbiome and stats packages. Data visualization utilized the ggplot2 package (version 3.4.0) 
+
+## File description
+**qiime_denoising.sh** includes command lines for FASTQ file input and denoising using DADA2 in QIIME2.
+**qiime_taxonomic_assignment.sh** includes command lines for assigning taxonomy to ASVs against a curated SILVA (138) reference database with only 16S rRNA V3-V4 region sequences.
+**TGM_statistical.Rmd** is the R script for data cleaning, diversity analyses and statistical analyses.
+
+
