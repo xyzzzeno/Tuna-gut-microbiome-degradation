@@ -17,6 +17,7 @@ Data cleaning, statistical analyses, and visualization were performed using R (v
 ## File description
 **qiime_denoising.sh** includes command lines for FASTQ file input and denoising using DADA2 in QIIME2.
 **qiime_taxonomic_assignment.sh** includes command lines for assigning taxonomy to ASVs against a curated SILVA (138) reference database with only 16S rRNA V3-V4 region sequences.
-**TGM_statistical.Rmd** is the R script for data cleaning, diversity analyses and statistical analyses.
+**TGM_statistical.Rmd** is the R script for data cleaning, diversity analyses and statistical analyses. 
+**TGM_taxonomic.Rmd** is the R script for taxonomy analyses, including the relative abundance analyses and changes in important microbiome families.
 
 
